@@ -1,65 +1,85 @@
-import { Clock, ChevronRight } from 'lucide-react';
-import { Task } from '../types';
+import React, { useState, useEffect } from 'react';
+import { getHistory } from '../services/api';
 
-interface TaskHistoryProps {
-  tasks: Task[];
-  onSelect: (task: Task) => void;
-  currentTaskId?: string;
+interface Task {
+  id: string;
+  originalTask: string;
+  steps: string[];
+  completedSteps: boolean[];
+  createdAt: string;
 }
 
-export default function TaskHistory({ tasks, onSelect, currentTaskId }: TaskHistoryProps) {
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+const TaskHistory: React.FC = () => {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const data = await getHistory();
+      setTasks(data.tasks || []);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="w-5 h-5 text-gray-500" />
-        <h3 className="text-lg font-semibold text-gray-800">历史记录</h3>
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <p className="text-gray-500 text-center">加载历史记录...</p>
       </div>
+    );
+  }
 
-      {tasks.length === 0 ? (
-        <p className="text-gray-500 text-sm text-center py-4">
-          暂无历史任务
-        </p>
-      ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {tasks.map((task) => {
-            const completedSteps = task.steps.filter(s => s.completed).length;
-            const isActive = task.id === currentTaskId;
+  if (tasks.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">历史记录</h2>
+        <p className="text-gray-500 text-center py-4">暂无历史记录</p>
+      </div>
+    );
+  }
 
-            return (
-              <button
-                key={task.id}
-                onClick={() => onSelect(task)}
-                className={`w-full text-left p-3 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-blue-50 border border-blue-200'
-                    : 'hover:bg-gray-50 border border-transparent'
-                }`}
-              >
-                <p className="text-sm font-medium text-gray-800 line-clamp-2 mb-1">
-                  {task.originalTask}
-                </p>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>
-                    {completedSteps}/{task.steps.length} 完成
-                  </span>
-                  <span>{formatDate(task.createdAt)}</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100" />
-              </button>
-            );
-          })}
-        </div>
-      )}
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <h2 className="text-xl font-semibold text-gray-800 mb-4">历史记录</h2>
+      
+      <div className="space-y-4">
+        {tasks.map((task) => {
+          const completedCount = task.completedSteps.filter(Boolean).length;
+          const progress = (completedCount / task.steps.length) * 100;
+          
+          return (
+            <div key={task.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-medium text-gray-800 line-clamp-1">{task.originalTask}</h3>
+                <span className="text-xs text-gray-500">
+                  {new Date(task.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+              
+              <div className="flex items-center text-sm text-gray-600">
+                <span className="mr-4">{task.steps.length} 个步骤</span>
+                <span>{completedCount} 个已完成</span>
+              </div>
+              
+              <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
-}
+};
+
+export default TaskHistory;
