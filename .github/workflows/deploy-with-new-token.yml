@@ -1,0 +1,151 @@
+name: Deploy with New Cloudflare Token
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloudflare_api_token:
+        description: '新的 Cloudflare API Token (使用 "Edit Cloudflare Workers" 模板生成)'
+        required: true
+        type: string
+      confirm_token:
+        description: '确认 Token 正确'
+        required: true
+        type: choice
+        options:
+          - '是的，Token 正确'
+          - '需要重新生成 Token'
+          - '取消部署'
+
+jobs:
+  deploy:
+    if: github.event.inputs.confirm_token == '是的，Token 正确'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 🔧 Install dependencies
+        working-directory: frontend
+        run: |
+          echo "安装前端依赖..."
+          npm ci --silent
+          echo "✅ 依赖安装完成"
+      
+      - name: 🏗️ Build project
+        working-directory: frontend
+        run: |
+          echo "构建前端项目..."
+          npm run build --silent
+          echo "✅ 项目构建完成"
+      
+      - name: 📝 Create deployment files
+        working-directory: frontend/dist
+        run: |
+          echo "创建部署文件..."
+          echo "/* /index.html 200" > _redirects
+          
+          cat > _headers << 'EOF'
+          /*
+            X-Frame-Options: DENY
+            X-Content-Type-Options: nosniff
+            Referrer-Policy: strict-origin-when-cross-origin
+            Permissions-Policy: camera=(), microphone=(), geolocation=()
+          EOF
+          
+          echo "✅ 部署文件创建完成"
+      
+      - name: 🔐 Test new Token
+        env:
+          NEW_TOKEN: ${{ github.event.inputs.cloudflare_api_token }}
+        run: |
+          echo "测试新 Token 有效性..."
+          
+          # 测试 Token
+          TOKEN_RESPONSE=$(curl -s -H "Authorization: Bearer $NEW_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/user/tokens/verify")
+          
+          if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
+            echo "✅ 新 Token 验证成功！"
+            
+            # 提取 Token 信息
+            TOKEN_ID=$(echo "$TOKEN_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+            EXPIRES=$(echo "$TOKEN_RESPONSE" | grep -o '"expires_on":"[^"]*"' | head -1 | cut -d'"' -f4)
+            
+            echo "   Token ID: $TOKEN_ID"
+            echo "   有效期至: $EXPIRES"
+          else
+            echo "❌ 新 Token 验证失败"
+            ERROR_MSG=$(echo "$TOKEN_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
+            echo "   错误: ${ERROR_MSG:-未知错误}"
+            echo ""
+            echo "⚠️  Token 无效，请重新生成："
+            echo "1. 访问 https://dash.cloudflare.com/profile/api-tokens"
+            echo "2. 使用 'Edit Cloudflare Workers' 模板"
+            echo "3. 确保有 Account:Cloudflare Pages:Edit 权限"
+            exit 1
+          fi
+          
+          # 测试账户访问
+          echo "测试账户访问..."
+          ACCOUNT_RESPONSE=$(curl -s -H "Authorization: Bearer $NEW_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/907dc1ca42c6f0e75b5ea92bb02c8aa6")
+          
+          if echo "$ACCOUNT_RESPONSE" | grep -q '"success":true'; then
+            echo "✅ 账户访问成功"
+          else
+            echo "❌ 账户访问失败"
+            exit 1
+          fi
+      
+      - name: 🚀 Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ github.event.inputs.cloudflare_api_token }}
+          accountId: 907dc1ca42c6f0e75b5ea92bb02c8aa6
+          projectName: 'ai-converter-system'
+          directory: 'frontend/dist'
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+          wranglerVersion: '3'
+      
+      - name: 📊 Deployment success
+        if: success()
+        run: |
+          echo "🎉 部署成功！"
+          echo ""
+          echo "🌐 访问地址: https://ai-converter-system.pages.dev"
+          echo "📊 部署 ID: ${{ steps.deploy.outputs.id }}"
+          echo "🔗 部署 URL: ${{ steps.deploy.outputs.url }}"
+          echo ""
+          echo "✅ 部署完成！现在可以访问你的网站了。"
+      
+      - name: 🚨 Deployment failed
+        if: failure()
+        run: |
+          echo "❌ 部署失败！"
+          echo ""
+          echo "可能的原因："
+          echo "1. Token 权限不足（需要 Account:Cloudflare Pages:Edit）"
+          echo "2. Token 已过期"
+          echo "3. 网络连接问题"
+          echo ""
+          echo "解决方案："
+          echo "1. 重新生成 Token，确保使用 'Edit Cloudflare Workers' 模板"
+          echo "2. 确保有 Account:Cloudflare Pages:Edit 权限"
+          echo "3. 检查 Token 有效期"
+          echo ""
+          echo "紧急方案：使用手动上传"
+          echo "1. 运行: ./build-and-prepare.sh"
+          echo "2. 登录 Cloudflare Dashboard"
+          echo "3. 手动上传 frontend/dist 目录"

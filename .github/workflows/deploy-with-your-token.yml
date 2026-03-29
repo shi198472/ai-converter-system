@@ -105,7 +105,7 @@ jobs:
         id: deploy
         uses: cloudflare/pages-action@v1
         with:
-          apiToken: cfat_FcDmYMMMdVAdsqWdxlvIwKjc392TZAR1m0ZGZUV71422fd1a
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN || 'YOUR_NEW_TOKEN_HERE' }}
           accountId: 907dc1ca42c6f0e75b5ea92bb02c8aa6
           projectName: 'ai-converter-system'
           directory: 'frontend/dist'
