@@ -1,0 +1,176 @@
+name: Deploy with Your Cloudflare Token
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: '确认使用提供的 Token 和 Account ID 进行部署'
+        required: true
+        type: choice
+        options:
+          - '是的，使用 cfat_FcDmYMMMdVAdsqWdxlvIwKjc392TZAR1m0ZGZUV71422fd1a'
+          - '是的，使用 907dc1ca42c6f0e75b5ea92bb02c8aa6'
+          - '取消部署'
+        default: '是的，使用 cfat_FcDmYMMMdVAdsqWdxlvIwKjc392TZAR1m0ZGZUV71422fd1a'
+
+jobs:
+  deploy:
+    if: github.event.inputs.confirm_deployment != '取消部署'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 🔧 Install dependencies
+        working-directory: frontend
+        run: |
+          echo "安装前端依赖..."
+          npm ci --silent
+          echo "✅ 依赖安装完成"
+      
+      - name: 🏗️ Build project
+        working-directory: frontend
+        run: |
+          echo "构建前端项目..."
+          npm run build --silent
+          echo "✅ 项目构建完成"
+          
+          # 检查构建输出
+          cd dist
+          echo "构建输出文件:"
+          ls -la | head -10
+          echo "文件总数: $(find . -type f | wc -l)"
+      
+      - name: 📝 Create deployment files
+        working-directory: frontend/dist
+        run: |
+          echo "创建 _redirects 文件..."
+          echo "/* /index.html 200" > _redirects
+          
+          echo "创建 _headers 文件..."
+          cat > _headers << 'EOF'
+          /*
+            X-Frame-Options: DENY
+            X-Content-Type-Options: nosniff
+            Referrer-Policy: strict-origin-when-cross-origin
+            Permissions-Policy: camera=(), microphone=(), geolocation=()
+          EOF
+          
+          echo "✅ 部署文件创建完成"
+      
+      - name: 🔐 Test Cloudflare API connection
+        env:
+          CLOUDFLARE_API_TOKEN: cfat_FcDmYMMMdVAdsqWdxlvIwKjc392TZAR1m0ZGZUV71422fd1a
+          CLOUDFLARE_ACCOUNT_ID: 907dc1ca42c6f0e75b5ea92bb02c8aa6
+        run: |
+          echo "测试 Cloudflare API 连接..."
+          
+          # 测试 Token
+          echo "测试 Token 有效性..."
+          TOKEN_RESPONSE=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/user/tokens/verify")
+          
+          if echo "$TOKEN_RESPONSE" | grep -q '"success":true'; then
+            echo "✅ Token 验证成功"
+          else
+            echo "⚠️ Token 验证失败，但继续尝试部署..."
+            echo "响应: $TOKEN_RESPONSE"
+          fi
+          
+          # 测试账户访问
+          echo "测试账户访问..."
+          ACCOUNT_RESPONSE=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")
+          
+          if echo "$ACCOUNT_RESPONSE" | grep -q '"success":true'; then
+            echo "✅ 账户访问成功"
+          else
+            echo "⚠️ 账户访问失败，但继续尝试部署..."
+          fi
+      
+      - name: 🚀 Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: cfat_FcDmYMMMdVAdsqWdxlvIwKjc392TZAR1m0ZGZUV71422fd1a
+          accountId: 907dc1ca42c6f0e75b5ea92bb02c8aa6
+          projectName: 'ai-converter-system'
+          directory: 'frontend/dist'
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+          wranglerVersion: '3'
+      
+      - name: 📊 Deployment status
+        run: |
+          echo "=== 部署状态 ==="
+          echo "部署 URL: ${{ steps.deploy.outputs.url }}"
+          echo "部署 ID: ${{ steps.deploy.outputs.id }}"
+          echo "环境: ${{ steps.deploy.outputs.environment }}"
+          echo "别名: ${{ steps.deploy.outputs.alias }}"
+          
+          if [ -n "${{ steps.deploy.outputs.url }}" ]; then
+            echo "✅ 部署成功！"
+            echo "🌐 访问地址: ${{ steps.deploy.outputs.url }}"
+          else
+            echo "⚠️ 部署完成，但未获取到 URL"
+            echo "请在 Cloudflare Dashboard 查看部署状态"
+          fi
+      
+      - name: 📋 Post-deployment checklist
+        if: success()
+        run: |
+          echo "=== 部署后检查清单 ==="
+          echo ""
+          echo "✅ 代码检出完成"
+          echo "✅ Node.js 环境设置完成"
+          echo "✅ 依赖安装完成"
+          echo "✅ 项目构建完成"
+          echo "✅ 部署文件创建完成"
+          echo "✅ Cloudflare API 测试完成"
+          echo "✅ 部署到 Cloudflare Pages 完成"
+          echo ""
+          echo "🎉 部署流程完成！"
+          echo ""
+          echo "下一步:"
+          echo "1. 访问 https://ai-converter-system.pages.dev"
+          echo "2. 测试网站功能"
+          echo "3. 在 Cloudflare Dashboard 查看部署详情"
+          echo "4. 配置自定义域名（可选）"
+      
+      - name: 🚨 Deployment failed
+        if: failure()
+        run: |
+          echo "❌ 部署失败！"
+          echo ""
+          echo "可能的原因:"
+          echo "1. Cloudflare API Token 无效或已过期"
+          echo "2. Token 权限不足（需要 Account:Cloudflare Pages:Edit）"
+          echo "3. 账户 ID 不正确"
+          echo "4. 网络连接问题"
+          echo ""
+          echo "解决方案:"
+          echo "1. 检查 Token 是否正确复制"
+          echo "2. 在 Cloudflare Dashboard 生成新的 API Token"
+          echo "3. 使用 'Edit Cloudflare Workers' 模板"
+          echo "4. 确保有 Account:Cloudflare Pages:Edit 权限"
+          echo "5. 重新运行工作流"
+          echo ""
+          echo "紧急方案:"
+          echo "使用手动上传到 Cloudflare Dashboard"
+          echo "1. 登录 https://dash.cloudflare.com"
+          echo "2. Workers & Pages → Create application → Pages"
+          echo "3. 选择 'Direct upload'"
+          echo "4. 上传 frontend/dist 目录的内容"
