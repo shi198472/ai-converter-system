@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// 支持环境变量配置 API 地址
+// 开发环境: http://localhost:3001
+// 生产环境: 通过环境变量 VITE_API_URL 配置
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export interface DecomposeResponse {
   originalTask: string;

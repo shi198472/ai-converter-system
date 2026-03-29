@@ -1,0 +1,108 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-to-cloudflare-pages.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+
+# 允许手动触发部署
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          echo "Dependencies installed successfully"
+      
+      - name: Build project
+        working-directory: frontend
+        run: |
+          npm run build
+          echo "Build completed"
+        env:
+          CI: false
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://localhost:3001' }}
+      
+      - name: Create _redirects file
+        working-directory: frontend/dist
+        run: |
+          echo "/* /index.html 200" > _redirects
+          echo "_redirects file created"
+      
+      - name: Create _headers file
+        working-directory: frontend/dist
+        run: |
+          cat > _headers << 'EOF'
+          /*
+            X-Frame-Options: DENY
+            X-Content-Type-Options: nosniff
+            Referrer-Policy: strict-origin-when-cross-origin
+            Permissions-Policy: camera=(), microphone=(), geolocation=()
+            Cache-Control: public, max-age=3600
+          EOF
+          echo "_headers file created"
+      
+      - name: List build output
+        working-directory: frontend/dist
+        run: |
+          ls -la
+          echo "Total files: $(find . -type f | wc -l)"
+      
+      - name: Publish to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: 'ai-converter-system'
+          directory: 'frontend/dist'
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+          wranglerVersion: '3'
+      
+      - name: Deployment status
+        run: |
+          echo "Deployment URL: ${{ steps.deploy.outputs.url }}"
+          echo "Deployment ID: ${{ steps.deploy.outputs.id }}"
+          echo "Deployment environment: ${{ steps.deploy.outputs.environment }}"
+          echo "Deployment alias: ${{ steps.deploy.outputs.alias }}"
+      
+      - name: Notify deployment
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌐 Preview URL: ${{ steps.deploy.outputs.url }}"
+      
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details."

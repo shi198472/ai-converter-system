@@ -1,0 +1,103 @@
+# Cloudflare Pages Configuration
+# https://developers.cloudflare.com/pages/platform/build-configuration
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--production=false"
+  CI = "false"
+
+# Environment variables for different environments
+[env]
+  VITE_APP_NAME = "AI Converter System"
+  VITE_APP_VERSION = "1.0.0"
+
+# Preview environment (pull requests)
+[env.preview]
+  VITE_API_URL = "https://ai-converter-api.preview.example.com"
+  VITE_ENABLE_DEBUG = "true"
+
+# Production environment
+[env.production]
+  VITE_API_URL = "https://ai-converter-api.example.com"
+  VITE_ENABLE_ANALYTICS = "true"
+
+# Headers configuration
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Cache-Control = "public, max-age=3600"
+
+# Redirects
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# CORS headers for API
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+# Security headers for admin paths
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+
+# Image optimization
+[[transform]]
+  type = "image"
+  [transform.options]
+    format = "webp"
+    quality = 80
+
+# JavaScript optimization
+[[transform]]
+  type = "javascript"
+  [transform.options]
+    minify = true
+
+# CSS optimization
+[[transform]]
+  type = "css"
+  [transform.options]
+    minify = true
+
+# HTML optimization
+[[transform]]
+  type = "html"
+  [transform.options]
+    minify = true
+
+# Analytics (if using Cloudflare Analytics)
+# [[analytics]]
+#   id = "your-analytics-id"
+
+# Environment-specific builds
+[context.preview]
+  command = "npm run build:preview"
+
+[context.production]
+  command = "npm run build:production"
+
+# Deploy hooks (for notifications)
+# [[deploy_hooks]]
+#   id = "discord"
+#   url = "https://discord.com/api/webhooks/..."
+
+# [[deploy_hooks]]
+#   id = "slack"
+#   url = "https://hooks.slack.com/services/..."
