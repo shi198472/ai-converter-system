@@ -1,18 +1,22 @@
 name: Deploy to Cloudflare Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-to-cloudflare-pages.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-
-# 允许手动触发部署
-on: workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      cloudflare_api_token:
+        description: 'Cloudflare API Token'
+        required: true
+        type: string
+      cloudflare_account_id:
+        description: 'Cloudflare Account ID'
+        required: true
+        type: string
+        default: '907dc1ca42c6f0e75b5ea92bb02c8aa6'
+      project_name:
+        description: 'Project Name'
+        required: false
+        type: string
+        default: 'ai-converter-system'
 
 jobs:
   deploy:
@@ -80,9 +84,9 @@ jobs:
         id: deploy
         uses: cloudflare/pages-action@v1
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: 'ai-converter-system'
+          apiToken: ${{ github.event.inputs.cloudflare_api_token }}
+          accountId: ${{ github.event.inputs.cloudflare_account_id }}
+          projectName: ${{ github.event.inputs.project_name }}
           directory: 'frontend/dist'
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           branch: main
